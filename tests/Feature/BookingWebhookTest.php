@@ -22,6 +22,7 @@ class BookingWebhookTest extends TestCase
     protected RoomType $roomType;
     protected Channel $jsonChannel;
     protected Channel $xmlChannel;
+    protected Channel $gammaChannel;
 
     protected function setUp(): void
     {
@@ -51,6 +52,15 @@ class BookingWebhookTest extends TestCase
             'format' => 'xml',
             'endpoint_url' => 'http://localhost/mock/2/inventory',
             'api_key' => 'beta-key-002',
+            'active' => true,
+        ]);
+
+        $this->gammaChannel = Channel::create([
+            'hotel_id' => $this->hotel->id,
+            'name' => 'Gamma Stays',
+            'format' => 'json',
+            'endpoint_url' => 'http://localhost/mock/3/inventory',
+            'api_key' => 'gamma-key-003',
             'active' => true,
         ]);
 
@@ -168,7 +178,7 @@ class BookingWebhookTest extends TestCase
         $this->assertEquals(0, Inventory::where('date', '2025-06-02')->value('available'));
     }
 
-    public function test_same_external_ref_twice_is_idempotent(): void
+    public function test_same_external_ref_twice_does_not_double_decrement(): void
     {
         $payload = [
             'external_ref' => 'IDEM-001',
@@ -199,6 +209,41 @@ class BookingWebhookTest extends TestCase
         $this->assertEquals(1, Booking::where('external_ref', 'IDEM-001')->count());
     }
 
+    public function test_outbound_jobs_dispatched_to_other_channels(): void
+    {
+        Queue::fake();
+
+        $payload = [
+            'external_ref' => 'DISPATCH-TEST-01',
+            'room_type_id' => $this->roomType->id,
+            'guest_name' => 'Zero',
+            'check_in' => '2025-06-01',
+            'check_out' => '2025-06-02',
+            'rooms' => 1,
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-Key' => 'alpha-key-001',
+            'Content-Type' => 'application/json',
+        ])->postJson("/api/webhooks/{$this->jsonChannel->id}/bookings", $payload);
+
+        $response->assertStatus(201);
+
+        // Dispatched to Beta (xmlChannel) and Gamma (gammaChannel)
+        Queue::assertPushed(PushInventoryToChannel::class, function ($job) {
+            return $job->channel->id === $this->xmlChannel->id;
+        });
+
+        Queue::assertPushed(PushInventoryToChannel::class, function ($job) {
+            return $job->channel->id === $this->gammaChannel->id;
+        });
+
+        // NOT dispatched to source channel Alpha (jsonChannel)
+        Queue::assertNotPushed(PushInventoryToChannel::class, function ($job) {
+            return $job->channel->id === $this->jsonChannel->id;
+        });
+    }
+
     public function test_invalid_api_key_returns_401(): void
     {
         $response = $this->withHeaders([
@@ -209,7 +254,7 @@ class BookingWebhookTest extends TestCase
         $response->assertStatus(401);
     }
 
-    public function test_xml_channel_booking_works(): void
+    public function test_xml_channel_booking(): void
     {
         Queue::fake();
 
