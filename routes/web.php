@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MockOtaController;
+use App\Http\Controllers\SimulatorController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'index']);
+Route::get('/simulator', [SimulatorController::class, 'index']);
 
 // Mock OTA Endpoints
 Route::post('/mock/{channel}/inventory', [MockOtaController::class, 'updateInventory']);
