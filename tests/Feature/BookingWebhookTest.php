@@ -245,4 +245,90 @@ XML;
         ]);
         $this->assertEquals(4, Inventory::where('date', '2025-06-01')->value('available'));
     }
+
+    public function test_cancellation_restores_inventory(): void
+    {
+        // 1. Create confirmed booking for 2 nights (June 1 and June 2) x 2 rooms
+        $booking = Booking::create([
+            'room_type_id' => $this->roomType->id,
+            'channel_id'   => $this->jsonChannel->id,
+            'external_ref' => 'CANCEL-ME-01',
+            'guest_name'   => 'Dmitri',
+            'check_in'     => '2025-06-01',
+            'check_out'    => '2025-06-03',
+            'rooms'        => 2,
+            'status'       => 'confirmed',
+        ]);
+
+        // Decrement initial inventory (5 - 2 = 3)
+        Inventory::whereIn('date', ['2025-06-01', '2025-06-02'])->decrement('available', 2);
+        $this->assertEquals(3, Inventory::where('date', '2025-06-01')->value('available'));
+        $this->assertEquals(3, Inventory::where('date', '2025-06-02')->value('available'));
+
+        // 2. Send cancellation webhook
+        $response = $this->withHeaders([
+            'X-API-Key' => 'alpha-key-001',
+            'Content-Type' => 'application/json',
+        ])->postJson("/api/webhooks/{$this->jsonChannel->id}/cancellations", [
+            'external_ref' => 'CANCEL-ME-01',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'cancelled',
+        ]);
+
+        // Inventory restored to original 5
+        $this->assertEquals(5, Inventory::where('date', '2025-06-01')->value('available'));
+        $this->assertEquals(5, Inventory::where('date', '2025-06-02')->value('available'));
+
+        // Log recorded
+        $this->assertDatabaseHas('sync_logs', [
+            'channel_id' => $this->jsonChannel->id,
+            'direction' => 'in',
+            'event' => 'booking_cancelled',
+            'response_code' => 200,
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_cancellation_of_nonexistent_booking_returns_404(): void
+    {
+        $response = $this->withHeaders([
+            'X-API-Key' => 'alpha-key-001',
+            'Content-Type' => 'application/json',
+        ])->postJson("/api/webhooks/{$this->jsonChannel->id}/cancellations", [
+            'external_ref' => 'DOES-NOT-EXIST',
+        ]);
+
+        $response->assertStatus(404);
+    }
+
+    public function test_repeated_cancellation_is_idempotent(): void
+    {
+        $booking = Booking::create([
+            'room_type_id' => $this->roomType->id,
+            'channel_id'   => $this->jsonChannel->id,
+            'external_ref' => 'ALREADY-CANCELLED',
+            'guest_name'   => 'Serge X.',
+            'check_in'     => '2025-06-01',
+            'check_out'    => '2025-06-02',
+            'rooms'        => 1,
+            'status'       => 'cancelled',
+        ]);
+
+        $initialInventory = Inventory::where('date', '2025-06-01')->value('available');
+
+        $response = $this->withHeaders([
+            'X-API-Key' => 'alpha-key-001',
+            'Content-Type' => 'application/json',
+        ])->postJson("/api/webhooks/{$this->jsonChannel->id}/cancellations", [
+            'external_ref' => 'ALREADY-CANCELLED',
+        ]);
+
+        $response->assertStatus(200);
+        // Inventory not incremented again
+        $this->assertEquals($initialInventory, Inventory::where('date', '2025-06-01')->value('available'));
+    }
 }
