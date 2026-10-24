@@ -1,11 +1,10 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MockOtaController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', [DashboardController::class, 'index']);
 
 // Mock OTA Endpoints
 Route::post('/mock/{channel}/inventory', [MockOtaController::class, 'updateInventory']);
