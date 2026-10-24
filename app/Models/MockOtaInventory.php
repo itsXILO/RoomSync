@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -18,6 +19,11 @@ class MockOtaInventory extends Model
         'rate'      => 'decimal:2',
         'available' => 'integer',
     ];
+
+    public function setDateAttribute($value): void
+    {
+        $this->attributes['date'] = Carbon::parse($value)->format('Y-m-d');
+    }
 
     public function channel(): BelongsTo
     {
