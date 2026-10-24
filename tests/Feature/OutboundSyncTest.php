@@ -208,4 +208,28 @@ class OutboundSyncTest extends TestCase
             return $job->channel->name === 'Inactive OTA';
         });
     }
+
+    public function test_inventory_update_dispatches_sync(): void
+    {
+        Queue::fake();
+
+        $inventory = Inventory::first();
+
+        $response = $this->putJson("/api/inventory/{$inventory->id}", [
+            'available' => 1,
+            'rate' => 175.00,
+        ]);
+
+        $response->assertStatus(200);
+
+        Queue::assertPushed(PushInventoryToChannel::class, function ($job) use ($inventory) {
+            return $job->channel->id === $this->jsonChannel->id
+                && $job->roomTypeId === $inventory->room_type_id;
+        });
+
+        Queue::assertPushed(PushInventoryToChannel::class, function ($job) use ($inventory) {
+            return $job->channel->id === $this->xmlChannel->id
+                && $job->roomTypeId === $inventory->room_type_id;
+        });
+    }
 }

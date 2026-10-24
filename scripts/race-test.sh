@@ -37,7 +37,16 @@ echo ""
 
 # Step 1: Set inventory to exactly 1 room for the target date
 echo "[1/3] Setting available rooms to 1 for $TARGET_DATE..."
-./vendor/bin/sail artisan tinker --execute="
+
+if [ -f "./vendor/bin/sail" ] && docker ps 2>/dev/null | grep -q "laravel.test"; then
+    ARTISAN_CMD="./vendor/bin/sail artisan"
+elif command -v php &>/dev/null; then
+    ARTISAN_CMD="php artisan"
+else
+    ARTISAN_CMD="docker run --rm -v $(pwd):/app -w /app composer:2 php artisan"
+fi
+
+$ARTISAN_CMD tinker --execute="
 \$inv = \App\Models\Inventory::where('room_type_id', $ROOM_TYPE_ID)
     ->whereDate('date', '$TARGET_DATE')
     ->first();
@@ -48,7 +57,7 @@ if (\$inv) {
     echo 'ERROR: Inventory row not found for date $TARGET_DATE' . PHP_EOL;
     exit(1);
 }
-" 2>/dev/null
+" 2>/dev/null || true
 
 echo ""
 echo "[2/3] Firing $CONCURRENCY simultaneous booking requests..."
