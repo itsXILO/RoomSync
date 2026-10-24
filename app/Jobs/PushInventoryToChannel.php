@@ -6,6 +6,7 @@ use App\Models\Channel;
 use App\Models\Inventory;
 use App\Models\SyncLog;
 use App\Services\ChannelAdapters\ChannelAdapterFactory;
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class PushInventoryToChannel implements ShouldQueue
 {
@@ -34,10 +36,17 @@ class PushInventoryToChannel implements ShouldQueue
             ->whereBetween('date', [$this->dateFrom, $this->dateTo])
             ->orderBy('date')
             ->get(['room_type_id', 'date', 'available', 'rate'])
+            ->map(fn (Inventory $row) => [
+                'room_type_id' => (int) $row->room_type_id,
+                'date' => Carbon::parse($row->date)->toDateString(),
+                'available' => (int) $row->available,
+                'rate' => (string) $row->rate,
+            ])
             ->toArray();
 
         $adapter = ChannelAdapterFactory::make($this->channel);
         $payload = $adapter->buildInventoryPayload($rows);
+        $attempts = method_exists($this, 'attempts') ? $this->attempts() : 1;
 
         try {
             $response = Http::withHeaders([
@@ -45,33 +54,38 @@ class PushInventoryToChannel implements ShouldQueue
                 'Content-Type' => $adapter->contentType(),
             ])->timeout(10)->withBody($payload, $adapter->contentType())->post($this->channel->endpoint_url);
 
+            $statusCode = $response->status();
+            $isSuccess = $response->successful();
+
             SyncLog::create([
                 'channel_id' => $this->channel->id,
                 'direction' => 'out',
                 'event' => 'inventory_push',
                 'payload' => $payload,
-                'response_code' => $response->status(),
-                'status' => $response->successful() ? 'success' : 'failed',
-                'attempts' => $this->attempts(),
-                'error' => $response->successful() ? null : $response->body(),
+                'response_code' => $statusCode,
+                'status' => $isSuccess ? 'success' : 'failed',
+                'attempts' => $attempts,
+                'error' => $isSuccess ? null : "HTTP {$statusCode}: " . $response->body(),
                 'created_at' => now(),
             ]);
 
-            if (! $response->successful()) {
-                throw new Exception("Channel {$this->channel->name} returned HTTP {$response->status()}");
+            if (! $isSuccess) {
+                throw new Exception("Channel {$this->channel->name} returned HTTP {$statusCode}");
             }
-        } catch (Exception $e) {
-            SyncLog::create([
-                'channel_id' => $this->channel->id,
-                'direction' => 'out',
-                'event' => 'inventory_push',
-                'payload' => $payload,
-                'response_code' => 500,
-                'status' => 'failed',
-                'attempts' => $this->attempts(),
-                'error' => $e->getMessage(),
-                'created_at' => now(),
-            ]);
+        } catch (Throwable $e) {
+            if (! isset($response)) {
+                SyncLog::create([
+                    'channel_id' => $this->channel->id,
+                    'direction' => 'out',
+                    'event' => 'inventory_push',
+                    'payload' => $payload,
+                    'response_code' => 0,
+                    'status' => 'failed',
+                    'attempts' => $attempts,
+                    'error' => $e->getMessage(),
+                    'created_at' => now(),
+                ]);
+            }
 
             throw $e;
         }
