@@ -6,7 +6,7 @@ FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
 
 COPY vite.config.js ./
 COPY resources/ resources/
