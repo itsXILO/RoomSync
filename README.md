@@ -4,6 +4,15 @@
 
 ---
 
+### 🌐 Live Deployment
+- **Live URL:** [http://16.192.250.54/](http://16.192.250.54/)
+- **Infrastructure:** Deployed on an **AWS EC2** instance backed by an **AWS Elastic IP** — ensuring this URL remains permanent and consistent across instance stops and starts.
+- **Architecture & CI/CD:** Fully containerized with multi-stage **Docker & Docker Compose**, featuring an automated **GitHub Actions** CI/CD pipeline that tests, builds, and rolls out zero-downtime updates on every push.
+
+> *Note: To conserve cloud compute credits, the EC2 instance may be powered down when not actively undergoing review, but the assigned Elastic IP and configuration above remain fixed.*
+
+---
+
 ## 🏗️ Architecture Overview
 
 ```mermaid
