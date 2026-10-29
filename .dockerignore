@@ -1,0 +1,52 @@
+# Git & IDE
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+
+# Local Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Node & Frontend Build
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm/
+
+# Composer & Backend
+vendor/
+composer.phar
+.phpunit.result.cache
+.phpunit.cache
+tests/
+phpunit.xml
+
+# Storage & Temporary Files
+storage/*.key
+storage/logs/*
+!storage/logs/.gitkeep
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitkeep
+storage/framework/sessions/*
+!storage/framework/sessions/.gitkeep
+storage/framework/views/*
+!storage/framework/views/.gitkeep
+
+# Docker & CI/CD Assets
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+.github/
+
+# OS Specific
+.DS_Store
+Thumbs.db
